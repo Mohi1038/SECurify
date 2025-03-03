@@ -26,13 +26,18 @@ A desktop application for capturing and analyzing network traffic.
 
 ## Setup Instructions
 
-### Prerequisites
+For detailed setup instructions, including environment configuration, dependency installation, and troubleshooting, see our [Comprehensive Setup Guide](docs/setup_guide.md).
+
+### Quick Start
+
+#### Prerequisites
 
 - Python 3.8+
 - Node.js 14+
 - Git
+- Npcap (Windows) or libpcap (Linux/MacOS)
 
-### Backend Setup
+#### Backend Setup
 
 ```bash
 cd backend
@@ -73,4 +78,8 @@ The frontend is built with Electron.js for cross-platform desktop support.
 
 ### Data Storage
 
-Packet captures are stored as JSON files in the `storage/data` directory.
+The application supports two storage methods:
+- SQLite database (default) for structured storage of packet data
+- JSON files for capture sessions and exports
+
+For detailed storage configuration, see the [Setup Guide](docs/setup_guide.md#local-storage-setup).
