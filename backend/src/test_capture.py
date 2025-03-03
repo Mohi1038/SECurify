@@ -221,6 +221,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test packet capture functionality")
     parser.add_argument("--count", type=int, default=5, help="Number of packets to capture")
     parser.add_argument("--interface", type=str, help="Network interface to capture from")
+    parser.add_argument("--list-interfaces", action="store_true", help="List available interfaces")
     args = parser.parse_args()
     
-    capture_test(args.count, args.interface)
+    if args.list_interfaces:
+        get_available_interfaces()
+    else:
+        capture_test(args.count, args.interface)

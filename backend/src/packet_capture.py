@@ -2,7 +2,12 @@ import scapy.all as scapy
 from datetime import datetime
 import sys
 import os
-from .system_check import run_all_checks
+import json
+import argparse
+
+# Import system_check using absolute path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from system_check import run_all_checks
 
 # Add project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
@@ -37,10 +42,21 @@ class PacketCapture:
         """Capture network packets"""
         try:
             self.validate_system()  # Re-check before capture
-            packets = scapy.sniff(iface=interface, count=count)
-            self.captured_packets = [self.analyze_packet(p) for p in packets]
-            return self.captured_packets
+            
+            packets = []
+            def packet_callback(packet):
+                packet_info = self.analyze_packet(packet)
+                packets.append(packet_info)
+                # Print each packet as JSON for real-time processing
+                print(json.dumps(packet_info, default=str))
+                sys.stdout.flush()  # Ensure output is sent immediately
+                
+            scapy.sniff(prn=packet_callback, iface=interface, count=count, store=False)
+            self.captured_packets = packets
+            return packets
+            
         except Exception as e:
+            print(f"ERROR: {str(e)}", file=sys.stderr)
             raise RuntimeError(f"Packet capture failed: {str(e)}")
 
     def analyze_packet(self, packet):
@@ -86,14 +102,21 @@ class PacketCapture:
         return self.storage.list_captures()
 
 if __name__ == "__main__":
-    # Test packet capture and storage
+    parser = argparse.ArgumentParser(description="Network packet capture")
+    parser.add_argument("--count", type=int, default=10, help="Number of packets to capture")
+    parser.add_argument("--interface", type=str, help="Network interface to use")
+    parser.add_argument("--list-captures", action="store_true", help="List available captures")
+    parser.add_argument("--load", type=str, help="Load a specific capture by filename")
+    args = parser.parse_args()
+    
     capture = PacketCapture()
-    packets = capture.capture_packets(count=5)
     
-    # Save the capture
-    save_path = capture.save_capture()
-    print(f"Capture saved to: {save_path}")
-    
-    # List available captures
-    captures = capture.list_captures()
-    print(f"Available captures: {captures}")
+    if args.list_captures:
+        captures = capture.list_captures()
+        print(json.dumps(captures))
+    elif args.load:
+        data = capture.load_capture(args.load)
+        print(json.dumps(data, default=str))
+    else:
+        # Capture packets and print them (happens inside the callback)
+        capture.capture_packets(interface=args.interface, count=args.count)
