@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Traffic Monitor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Network Traffic Monitor</h1>
+  </header>
+  
+  <div class="container">
+    <div class="sidebar">
+      <div class="controls">
+        <h3>Capture Controls</h3>
+        <button id="start-capture">Start Capture</button>
+        <button id="stop-capture" disabled>Stop Capture</button>
+        
+        <div class="filter-options">
+          <h3>Filters</h3>
+          <div class="form-group">
+            <label for="protocol-filter">Protocol:</label>
+            <select id="protocol-filter">
+              <option value="all">All</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+              <option value="icmp">ICMP</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="main-content">
+      <div class="packet-list-container">
+        <h3>Captured Packets</h3>
+        <table id="packet-list">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Source IP</th>
+              <th>Destination IP</th>
+              <th>Protocol</th>
+              <th>Length</th>
+            </tr>
+          </thead>
+          <tbody id="packet-data">
+            <!-- Packet data will be inserted here -->
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="packet-detail-container">
+        <h3>Packet Details</h3>
+        <pre id="packet-details">Select a packet to view details</pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
