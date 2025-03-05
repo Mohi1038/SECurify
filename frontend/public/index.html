@@ -6,7 +6,12 @@
   <title>Network Traffic Monitor</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="dark-theme.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <script>
+    // Prevent source map warning
+    // This prevents DevTools from trying to load the missing source map
+    //# sourceMappingURL=
+  </script>
 </head>
 <body>
   <header>
@@ -136,6 +141,27 @@
           
           <div class="filter-status">
             <span id="active-filter-count">No filters active</span>
+          </div>
+        </div>
+        
+        <!-- Add new history clear section -->
+        <div class="filter-row history-controls">
+          <div class="filter-group">
+            <select id="history-period">
+              <option value="day">Last 24 Hours</option>
+              <option value="week">Last 7 Days</option>
+              <option value="10days">Last 10 Days</option>
+              <option value="month">Last 30 Days</option>
+              <option value="all">All History</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <button id="clear-history" class="danger-button">Clear History</button>
+          </div>
+          
+          <div class="filter-status">
+            <span id="last-cleared">History never cleared</span>
           </div>
         </div>
       </div>

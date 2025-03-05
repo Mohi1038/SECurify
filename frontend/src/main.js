@@ -92,6 +92,7 @@ app.whenReady().then(async () => {
   }
 
   createWindow();
+  startRealTrafficCapture();
 });
 
 app.on('window-all-closed', () => {
@@ -151,6 +152,183 @@ const networkStatsHistory = {
   bytesReceived: [],
   bytesSent: []
 };
+
+// Real traffic capture process
+let realTrafficCaptureProcess = null;
+let realConnectionsData = [];
+let lastConnectionUpdate = Date.now();
+
+// Start real traffic capture
+function startRealTrafficCapture() {
+  if (realTrafficCaptureProcess) {
+    console.log('Real traffic capture already running');
+    return;
+  }
+
+  const scriptPath = path.join(__dirname, '../../backend/src/real_traffic_capture.py');
+  
+  try {
+    // Set a specific port for the HTTP server
+    const serverPort = 8000;
+    
+    realTrafficCaptureProcess = spawn('python', [
+      scriptPath,
+      '--serve',
+      '--port', serverPort.toString(),
+      '--debug',
+      '--simulate' // Add simulation flag to generate test data if no real connections
+    ]);
+
+    console.log(`Started real traffic capture with PID: ${realTrafficCaptureProcess.pid}`);
+
+    realTrafficCaptureProcess.stdout.on('data', (data) => {
+      console.log(`Capture output: ${data}`);
+    });
+
+    realTrafficCaptureProcess.stderr.on('data', (data) => {
+      console.error(`Capture error: ${data}`);
+    });
+
+    realTrafficCaptureProcess.on('close', (code) => {
+      console.log(`Capture process exited with code ${code}`);
+      realTrafficCaptureProcess = null;
+      
+      // If it crashed and code is non-zero, try to restart after a delay
+      if (code !== 0 && code !== null) {
+        console.log('Attempting to restart capture process in 5 seconds...');
+        setTimeout(() => {
+          if (!realTrafficCaptureProcess) {
+            startRealTrafficCapture();
+          }
+        }, 5000);
+      }
+    });
+
+    realTrafficCaptureProcess.on('error', (err) => {
+      console.error(`Failed to start capture process: ${err.message}`);
+      realTrafficCaptureProcess = null;
+    });
+
+    // Wait a bit for the server to start before polling
+    setTimeout(() => {
+      pollRealConnectionData(serverPort);
+    }, 2000);
+  } catch (error) {
+    console.error('Failed to start real traffic capture:', error);
+  }
+}
+
+// Stop real traffic capture
+function stopRealTrafficCapture() {
+  if (realTrafficCaptureProcess) {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', realTrafficCaptureProcess.pid, '/f', '/t']);
+    } else {
+      realTrafficCaptureProcess.kill();
+    }
+    realTrafficCaptureProcess = null;
+    console.log('Stopped real traffic capture');
+  }
+}
+
+// Poll for real connection data
+function pollRealConnectionData(port = 8000) {
+  const http = require('http');
+  let connectionFailures = 0;
+  const maxFailures = 5; // After this many consecutive failures, try alternative approach
+  
+  function fetchData() {
+    // Try IPv4 address explicitly (127.0.0.1) instead of localhost or ::1
+    const options = {
+      hostname: '127.0.0.1',
+      port: port,
+      path: '/connections',
+      method: 'GET',
+      timeout: 2000, // 2 second timeout
+    };
+    
+    const req = http.request(options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const responseData = JSON.parse(data);
+            
+            // Handle the case where we get diagnostics along with connections
+            if (responseData.connections) {
+              realConnectionsData = responseData.connections;
+              
+              // Log diagnostics if available
+              if (responseData.diagnostics) {
+                console.log('Capture diagnostics:', responseData.diagnostics);
+              }
+            } else {
+              // Standard format with just connections array
+              realConnectionsData = responseData;
+            }
+            
+            lastConnectionUpdate = Date.now();
+            connectionFailures = 0; // Reset failure counter on success
+            console.log(`Updated connections data: ${realConnectionsData.length} connections`);
+          } else {
+            console.error(`HTTP error: ${res.statusCode}`);
+            connectionFailures++;
+          }
+        } catch (error) {
+          console.error('Error parsing connections data:', error);
+          connectionFailures++;
+        }
+        
+        // Schedule next poll
+        setTimeout(fetchData, 2000);
+      });
+    });
+    
+    req.on('error', (err) => {
+      console.error('Error fetching connections data:', err);
+      connectionFailures++;
+      
+      // After several failures, try restarting the capture process
+      if (connectionFailures >= maxFailures) {
+        console.log(`${maxFailures} consecutive connection failures. Attempting to restart capture...`);
+        stopRealTrafficCapture();
+        setTimeout(startRealTrafficCapture, 2000);
+        connectionFailures = 0;
+      } else {
+        // Otherwise, retry after a delay
+        setTimeout(fetchData, 5000);
+      }
+    });
+    
+    req.end();
+  }
+  
+  // Start polling
+  fetchData();
+}
+
+// IPC handlers for real traffic data
+ipcMain.handle('start-real-traffic-capture', async () => {
+  startRealTrafficCapture();
+  return { success: true };
+});
+
+ipcMain.handle('stop-real-traffic-capture', async () => {
+  stopRealTrafficCapture();
+  return { success: true };
+});
+
+ipcMain.handle('get-real-connections', async () => {
+  return {
+    connections: realConnectionsData,
+    lastUpdate: lastConnectionUpdate
+  };
+});
 
 // Updated network stats handler with improved platform support
 ipcMain.handle('get-network-stats', async () => {
@@ -408,4 +586,172 @@ ipcMain.handle('load-capture', async (event, filename) => {
       }
     });
   });
+});
+
+app.on('will-quit', () => {
+  stopRealTrafficCapture();
+});
+
+// Add a handler for blocking connections
+ipcMain.handle('block-connection', async (event, connectionDetails) => {
+  try {
+    // Run the Python script to block the connection
+    const pythonProcess = spawn('python', [
+      path.join(__dirname, '../../backend/src/block_connection.py'),
+      '--source-ip', connectionDetails.sourceIp || 'any',
+      '--source-port', connectionDetails.sourcePort.toString() || 'any',
+      '--dest-ip', connectionDetails.destIp || 'any',
+      '--dest-port', connectionDetails.destPort.toString() || 'any',
+      '--protocol', connectionDetails.protocol || 'TCP'
+    ]);
+
+    return new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+
+      pythonProcess.stdout.on('data', (chunk) => {
+        stdout += chunk;
+      });
+
+      pythonProcess.stderr.on('data', (chunk) => {
+        stderr += chunk;
+      });
+
+      pythonProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const result = JSON.parse(stdout);
+            resolve(result);
+          } catch (error) {
+            resolve({ success: false, error: 'Failed to parse response' });
+          }
+        } else {
+          resolve({
+            success: false,
+            error: `Block connection failed with code ${code}\n${stderr}`
+          });
+        }
+      });
+
+      pythonProcess.on('error', (error) => {
+        resolve({
+          success: false,
+          error: `Failed to start Python script: ${error.message}`
+        });
+      });
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: `Block connection error: ${error.message}`
+    };
+  }
+});
+
+// Add a handler for unblocking connections
+ipcMain.handle('unblock-connection', async (event, ruleId) => {
+  try {
+    // Run the Python script to unblock the connection
+    const pythonProcess = spawn('python', [
+      path.join(__dirname, '../../backend/src/block_connection.py'),
+      '--unblock',
+      '--rule-id', ruleId
+    ]);
+
+    return new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+
+      pythonProcess.stdout.on('data', (chunk) => {
+        stdout += chunk;
+      });
+
+      pythonProcess.stderr.on('data', (chunk) => {
+        stderr += chunk;
+      });
+
+      pythonProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const result = JSON.parse(stdout);
+            resolve(result);
+          } catch (error) {
+            resolve({ success: false, error: 'Failed to parse response' });
+          }
+        } else {
+          resolve({
+            success: false, 
+            error: `Unblock connection failed with code ${code}\n${stderr}`
+          });
+        }
+      });
+
+      pythonProcess.on('error', (error) => {
+        resolve({
+          success: false,
+          error: `Failed to start Python script: ${error.message}`
+        });
+      });
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: `Unblock connection error: ${error.message}`
+    };
+  }
+});
+
+// Add a handler for listing blocked connections
+ipcMain.handle('list-blocked-connections', async () => {
+  try {
+    // Run the Python script to list blocked connections
+    const pythonProcess = spawn('python', [
+      path.join(__dirname, '../../backend/src/block_connection.py'),
+      '--list'
+    ]);
+
+    return new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+
+      pythonProcess.stdout.on('data', (chunk) => {
+        stdout += chunk;
+      });
+
+      pythonProcess.stderr.on('data', (chunk) => {
+        stderr += chunk;
+      });
+
+      pythonProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const result = JSON.parse(stdout);
+            resolve(result);
+          } catch (error) {
+            resolve({ success: false, error: 'Failed to parse response', blockedConnections: [] });
+          }
+        } else {
+          resolve({
+            success: false,
+            error: `List blocked connections failed with code ${code}\n${stderr}`,
+            blockedConnections: []
+          });
+        }
+      });
+
+      pythonProcess.on('error', (error) => {
+        resolve({
+          success: false,
+          error: `Failed to start Python script: ${error.message}`,
+          blockedConnections: []
+        });
+      });
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: `List blocked connections error: ${error.message}`,
+      blockedConnections: []
+    };
+  }
 });

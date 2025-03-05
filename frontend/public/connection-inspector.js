@@ -35,6 +35,11 @@ class ConnectionInspector {
     this.resetFiltersBtn = document.getElementById('reset-filters');
     this.activeFilterCount = document.getElementById('active-filter-count');
     
+    // History clearing elements
+    this.historyPeriod = document.getElementById('history-period');
+    this.clearHistoryBtn = document.getElementById('clear-history');
+    this.lastClearedSpan = document.getElementById('last-cleared');
+    
     // State
     this.connections = [];
     this.filteredConnections = [];
@@ -43,7 +48,14 @@ class ConnectionInspector {
     this.currentSort = { column: 'bytes', direction: 'desc' };
     this.currentFilters = {};
     this.selectedConnectionId = null;
-    this.favorites = new Set();
+    this.favorites = new Set(this.loadFavorites());
+    
+    // Add history state tracking
+    this.lastCleared = localStorage.getItem('lastHistoryCleared') || null;
+    if (this.lastCleared) {
+      const lastClearedDate = new Date(parseInt(this.lastCleared));
+      this.lastClearedSpan.textContent = `Last cleared: ${lastClearedDate.toLocaleString()}`;
+    }
     
     // Bind methods
     this.handleTableClick = this.handleTableClick.bind(this);
@@ -56,6 +68,7 @@ class ConnectionInspector {
     this.handlePageClick = this.handlePageClick.bind(this);
     this.handleApplyFilters = this.handleApplyFilters.bind(this);
     this.handleResetFilters = this.handleResetFilters.bind(this);
+    this.handleClearHistory = this.handleClearHistory.bind(this);
   }
   
   init() {
@@ -96,19 +109,51 @@ class ConnectionInspector {
       this.resetFiltersBtn.addEventListener('click', this.handleResetFilters);
     }
     
-    // Load connection data
-    this.loadConnections();
+    // Add history clearing event listener
+    if (this.clearHistoryBtn) {
+      this.clearHistoryBtn.addEventListener('click', this.handleClearHistory);
+    }
+    
+    // Load real connection data
+    this.loadRealConnections();
     
     // Start real-time updates
     this.startRealTimeUpdates();
   }
   
-  // Load connection data from backend
-  async loadConnections() {
+  // Load favorites from localStorage
+  loadFavorites() {
     try {
-      // In a real application, this would fetch from the backend
-      // For now, we'll generate sample data
-      this.connections = this.generateSampleData(200);
+      const favoritesJson = localStorage.getItem('connectionFavorites');
+      return favoritesJson ? new Set(JSON.parse(favoritesJson)) : new Set();
+    } catch (error) {
+      console.error('Error loading favorites:', error);
+      return new Set();
+    }
+  }
+  
+  // Save favorites to localStorage
+  saveFavorites() {
+    try {
+      localStorage.setItem('connectionFavorites', JSON.stringify([...this.favorites]));
+    } catch (error) {
+      console.error('Error saving favorites:', error);
+    }
+  }
+  
+  // Load real connection data from backend
+  async loadRealConnections() {
+    try {
+      const { connections } = await ipcRenderer.invoke('get-real-connections');
+      
+      if (connections && Array.isArray(connections) && connections.length > 0) {
+        this.connections = connections;
+        console.log(`Loaded ${connections.length} real connections`);
+      } else {
+        console.log('No real connections available, using sample data temporarily');
+        // Fall back to sample data if no real connections yet
+        this.connections = this.generateSampleData(10);
+      }
       
       // Apply initial filters and sorting
       this.filterConnections();
@@ -118,11 +163,17 @@ class ConnectionInspector {
       this.renderTable();
       this.updatePagination();
     } catch (error) {
-      console.error('Error loading connections:', error);
+      console.error('Error loading real connections:', error);
+      // Fall back to sample data if loading fails
+      this.connections = this.generateSampleData(20);
+      this.filterConnections();
+      this.sortConnections();
+      this.renderTable();
+      this.updatePagination();
     }
   }
   
-  // Generate sample connection data
+  // Generate sample connection data (used as fallback only)
   generateSampleData(count) {
     const protocols = ['TCP', 'UDP', 'ICMP', 'TCP', 'TCP', 'UDP']; // More TCP to be realistic
     const services = ['HTTP', 'HTTPS', 'DNS', 'SMTP', 'SSH', 'FTP', 'IMAP', 'POP3', 'Unknown'];
@@ -492,6 +543,9 @@ class ConnectionInspector {
       // Refresh table to update favorite icon in row
       this.renderTable();
     }
+    
+    // Save favorites to localStorage
+    this.saveFavorites();
   }
   
   // Toggle favorite status of a connection
@@ -501,6 +555,9 @@ class ConnectionInspector {
     } else {
       this.favorites.add(id);
     }
+    
+    // Save favorites to localStorage
+    this.saveFavorites();
     
     // If we're filtering by favorites, may need to refilter
     if (this.currentFilters.favorites) {
@@ -517,38 +574,68 @@ class ConnectionInspector {
     }
   }
   
-  // Block a connection (simulated)
+  // Block a connection (now will actually block using IP tables or Windows Firewall)
   blockConnection(id) {
+    // Find connection to block
     const connection = this.connections.find(conn => conn.id === id);
     if (!connection) return;
     
     // In a real app, this would call the backend to block the connection
     console.log(`Blocking connection: ${connection.srcAddr}:${connection.srcPort} -> ${connection.dstAddr}:${connection.dstPort}`);
     
-    // Show a temporary notification
-    const notification = document.createElement('div');
-    notification.className = 'notification-item';
-    notification.innerHTML = `
-      <div class="notification-icon warning"></div>
-      <div class="notification-content">
-        <h4>Connection Blocked</h4>
-        <p>${connection.srcAddr}:${connection.srcPort} to ${connection.dstAddr}:${connection.dstPort} (${connection.service})</p>
-        <span class="notification-time">Just now</span>
-      </div>
-    `;
-    
-    // Add to notifications tab and auto-remove after 5 seconds
-    const notificationList = document.getElementById('notification-list');
-    notificationList.prepend(notification);
+    // Call backend to block connection
+    ipcRenderer.invoke('block-connection', {
+      sourceIp: connection.srcAddr,
+      sourcePort: connection.srcPort,
+      destIp: connection.dstAddr,
+      destPort: connection.dstPort,
+      protocol: connection.protocol
+    }).then(result => {
+      if (result.success) {
+        // Show success notification
+        this.showBlockNotification(connection, true);
+      } else {
+        // Show error notification
+        this.showBlockNotification(connection, false, result.error);
+      }
+    }).catch(error => {
+      console.error('Error blocking connection:', error);
+      this.showBlockNotification(connection, false, error.toString());
+    });
     
     // Close the details panel if open
     this.handleCloseDetails();
+  }
+  
+  // Show notification for connection blocking
+  showBlockNotification(connection, success, error = null) {
+    const notification = document.createElement('div');
+    notification.className = 'notification-item';
     
-    // Remove the connection from the table
-    this.connections = this.connections.filter(conn => conn.id !== id);
-    this.filterConnections();
-    this.renderTable();
-    this.updatePagination();
+    if (success) {
+      notification.innerHTML = `
+        <div class="notification-icon warning"></div>
+        <div class="notification-content">
+          <h4>Connection Blocked</h4>
+          <p>${connection.srcAddr}:${connection.srcPort} to ${connection.dstAddr}:${connection.dstPort} (${connection.service})</p>
+          <span class="notification-time">Just now</span>
+        </div>
+      `;
+    } else {
+      notification.innerHTML = `
+        <div class="notification-icon error"></div>
+        <div class="notification-content">
+          <h4>Failed to Block Connection</h4>
+          <p>${connection.srcAddr}:${connection.srcPort} to ${connection.dstAddr}:${connection.dstPort}</p>
+          <p class="error-detail">${error || 'Unknown error'}</p>
+          <span class="notification-time">Just now</span>
+        </div>
+      `;
+    }
+    
+    // Add to notifications tab
+    const notificationList = document.getElementById('notification-list');
+    notificationList.prepend(notification);
     
     // Auto-remove notification after 10 seconds
     setTimeout(() => {
@@ -636,35 +723,115 @@ class ConnectionInspector {
     this.updatePagination();
   }
   
-  // Start real-time updates
-  startRealTimeUpdates() {
-    // Update active connections every few seconds
-    setInterval(() => {
-      // In a real app, this would poll the backend for updates
+  // Handle clear history button click
+  handleClearHistory() {
+    const period = this.historyPeriod.value;
+    const now = new Date();
+    let cutoffDate;
+    
+    switch(period) {
+      case 'day':
+        cutoffDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case 'week':
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '10days':
+        cutoffDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case 'all':
+      default:
+        cutoffDate = new Date(0); // Beginning of time
+        break;
+    }
+    
+    // Ask for confirmation
+    const periodText = {
+      'day': 'older than 24 hours',
+      'week': 'older than 7 days',
+      '10days': 'older than 10 days',
+      'month': 'older than 30 days',
+      'all': 'ALL connection history'
+    };
+    
+    const confirmMessage = `Are you sure you want to clear ${periodText[period]}?`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+    
+    // Clear connections based on the cutoff date
+    const initialCount = this.connections.length;
+    this.connections = this.connections.filter(conn => conn.firstSeen >= cutoffDate);
+    const removedCount = initialCount - this.connections.length;
+    
+    // Update last cleared timestamp
+    this.lastCleared = Date.now().toString();
+    localStorage.setItem('lastHistoryCleared', this.lastCleared);
+    this.lastClearedSpan.textContent = `Last cleared: ${new Date().toLocaleString()}`;
+    
+    // Show notification
+    this.showHistoryClearNotification(removedCount, periodText[period]);
+    
+    // Re-apply filters and update display
+    this.filterConnections();
+    this.sortConnections();
+    this.currentPage = 1; // Reset to first page
+    this.renderTable();
+    this.updatePagination();
+  }
+  
+  // Show notification for history clearing
+  showHistoryClearNotification(count, periodText) {
+    const notification = document.createElement('div');
+    notification.className = 'notification-item';
+    notification.innerHTML = `
+      <div class="notification-icon info"></div>
+      <div class="notification-content">
+        <h4>History Cleared</h4>
+        <p>Removed ${count} connection${count !== 1 ? 's' : ''} ${periodText}</p>
+        <span class="notification-time">Just now</span>
+      </div>
+    `;
+    
+    // Add to notifications tab
+    const notificationList = document.getElementById('notification-list');
+    if (notificationList) {
+      notificationList.prepend(notification);
       
-      // Randomly add a new connection (10% chance)
-      if (Math.random() < 0.1) {
-        const newConnections = this.generateSampleData(1);
-        this.connections.unshift(...newConnections);
-      }
-      
-      // Randomly update existing connections (bytes, packets, etc.)
-      this.connections.forEach(conn => {
-        if (conn.active) {
-          // Update bytes and packets
-          const newBytes = Math.floor(Math.random() * 10000);
-          conn.bytes += newBytes;
-          conn.packets += Math.floor(newBytes / (Math.random() * 500 + 500));
-          conn.lastSeen = new Date();
+      // Auto-remove notification after 10 seconds
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
         }
-      });
-      
-      // Re-apply filters and sorting
-      this.filterConnections();
-      this.sortConnections();
-      
-      // Re-render
-      this.renderTable();
-    }, 5000); // Every 5 seconds
+      }, 10000);
+    }
+  }
+  
+  // Start real-time updates using real data
+  startRealTimeUpdates() {
+    // Update connections every few seconds
+    setInterval(async () => {
+      try {
+        // Get real connection data
+        const { connections, lastUpdate } = await ipcRenderer.invoke('get-real-connections');
+        
+        if (connections && Array.isArray(connections) && connections.length > 0) {
+          // Update with real connections data
+          this.connections = connections;
+        }
+        
+        // Re-apply filters and sorting
+        this.filterConnections();
+        this.sortConnections();
+        
+        // Re-render table
+        this.renderTable();
+      } catch (error) {
+        console.error('Error updating real-time connections:', error);
+      }
+    }, 2000); // Update every 2 seconds
   }
 }

@@ -632,6 +632,31 @@ th.sortable[aria-sort="descending"] .sort-icon {
   color: #f56565;
 }
 
+/* New styles for history clearing section */
+.history-controls {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #2a3f5f;
+}
+
+.danger-button {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #f56565;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  font-weight: bold;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  background-color: rgba(239, 68, 68, 0.3);
+}
+
+.danger-button:active {
+  background-color: rgba(239, 68, 68, 0.4);
+}
+
 /* Responsive styles */
 @media (max-width: 1200px) {
   .filter-row {

@@ -99,6 +99,17 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Add danger button style for the light theme */
+button.danger-button {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+button.danger-button:hover {
+  background-color: #f1b0b7;
+}
+
 .main-content {
   flex: 1;
   display: flex;
