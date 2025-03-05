@@ -5,70 +5,254 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Network Traffic Monitor</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="dark-theme.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <header>
     <h1>Network Traffic Monitor</h1>
+    <div class="nav-tabs">
+      <div class="nav-tab" data-tab="overview">Overview</div>
+      <div class="nav-tab active-tab" data-tab="inspect">Inspect</div>
+      <div class="nav-tab" data-tab="notifications">Notifications</div>
+    </div>
   </header>
   
   <div class="container">
-    <div class="sidebar">
-      <div class="controls">
-        <h3>Capture Controls</h3>
-        <div class="form-group">
-          <label for="interface-select">Network Interface:</label>
-          <select id="interface-select">
-            <option value="">Loading interfaces...</option>
-          </select>
+    <!-- Overview Tab - New Dashboard -->
+    <div id="overview-tab" class="tab-content">
+      <div class="grid-container">
+        <!-- Network Statistics Panel -->
+        <div class="panel col-12">
+          <div class="network-stats">
+            <div class="stat-row">
+              <div class="stat-item">
+                <span class="stat-label">Network Adapter:</span>
+                <span id="network-adapter" class="stat-value">Loading...</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Link Type:</span>
+                <span id="link-type" class="stat-value">Ethernet</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Data Representation:</span>
+                <select id="data-representation">
+                  <option value="bytes">Bytes</option>
+                  <option value="packets">Packets</option>
+                </select>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Filters:</span>
+                <span id="active-filters" class="stat-value">None</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="packet-count">Packet Count:</label>
-          <input type="number" id="packet-count" value="10" min="1" max="1000">
-        </div>
-        <button id="start-capture">Start Capture</button>
-        <button id="stop-capture" disabled>Stop Capture</button>
         
-        <div class="filter-options">
-          <h3>Filters</h3>
-          <div class="form-group">
-            <label for="protocol-filter">Protocol:</label>
-            <select id="protocol-filter">
-              <option value="all">All</option>
-              <option value="tcp">TCP</option>
-              <option value="udp">UDP</option>
-              <option value="icmp">ICMP</option>
-            </select>
+        <!-- Traffic Rate Graph -->
+        <div class="panel col-12">
+          <h3>Traffic Rate</h3>
+          <div class="graph-container">
+            <canvas id="trafficChart"></canvas>
+          </div>
+        </div>
+        
+        <!-- Network Host Section -->
+        <div class="panel col-6">
+          <h3>Network Hosts</h3>
+          <div id="host-list">
+            <!-- Host items will be generated dynamically -->
+          </div>
+        </div>
+        
+        <!-- Service Breakdown Panel -->
+        <div class="panel col-6">
+          <h3>Service Breakdown</h3>
+          <div id="service-breakdown">
+            <!-- Service bars will be generated dynamically -->
           </div>
         </div>
       </div>
     </div>
     
-    <div class="main-content">
-      <div class="packet-list-container">
-        <h3>Captured Packets</h3>
-        <table id="packet-list">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Source IP</th>
-              <th>Destination IP</th>
-              <th>Protocol</th>
-              <th>Length</th>
-            </tr>
-          </thead>
-          <tbody id="packet-data">
-            <!-- Packet data will be inserted here -->
-          </tbody>
-        </table>
+    <!-- Inspect Tab - Enhanced Traffic Analysis UI -->
+    <div id="inspect-tab" class="tab-content active">
+      <!-- Filter Controls Panel -->
+      <div class="filter-panel">
+        <div class="filter-row">
+          <div class="filter-group search-field">
+            <input type="text" id="host-filter" placeholder="Filter by network host or domain">
+            <button id="search-btn" class="icon-button">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </button>
+          </div>
+          
+          <div class="filter-group">
+            <label class="checkbox-container">
+              <input type="checkbox" id="favorites-only">
+              <span class="checkmark"></span>
+              Only show favorites
+            </label>
+          </div>
+          
+          <div class="filter-group">
+            <select id="country-filter">
+              <option value="">All Countries</option>
+              <option value="US">United States</option>
+              <option value="CN">China</option>
+              <option value="IN">India</option>
+              <option value="UK">United Kingdom</option>
+              <option value="DE">Germany</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <select id="asn-filter">
+              <option value="">All Autonomous Systems</option>
+              <option value="AS15169">AS15169 (Google)</option>
+              <option value="AS16509">AS16509 (Amazon)</option>
+              <option value="AS32934">AS32934 (Facebook)</option>
+              <option value="AS8075">AS8075 (Microsoft)</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="filter-row">
+          <div class="filter-group">
+            <select id="protocol-filter">
+              <option value="all">All Protocols</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+              <option value="icmp">ICMP</option>
+              <option value="http">HTTP/HTTPS</option>
+              <option value="dns">DNS</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <button id="apply-filters" class="primary-button">Apply Filters</button>
+            <button id="reset-filters">Reset</button>
+          </div>
+          
+          <div class="filter-status">
+            <span id="active-filter-count">No filters active</span>
+          </div>
+        </div>
       </div>
       
-      <div class="packet-detail-container">
-        <h3>Packet Details</h3>
-        <pre id="packet-details">Select a packet to view details</pre>
+      <!-- Connection Table -->
+      <div class="traffic-table-container">
+        <table id="connection-table">
+          <thead>
+            <tr>
+              <th class="sortable" data-sort="source">Source Address <span class="sort-icon">▼</span></th>
+              <th class="sortable" data-sort="sport">Source Port <span class="sort-icon"></span></th>
+              <th class="sortable" data-sort="destination">Destination Address <span class="sort-icon"></span></th>
+              <th class="sortable" data-sort="dport">Destination Port <span class="sort-icon"></span></th>
+              <th class="sortable" data-sort="protocol">Protocol <span class="sort-icon"></span></th>
+              <th class="sortable" data-sort="service">Service <span class="sort-icon"></span></th>
+              <th class="sortable" data-sort="bytes">Bytes <span class="sort-icon"></span></th>
+              <th class="sortable" data-sort="packets">Packets <span class="sort-icon"></span></th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="connection-data">
+            <!-- Connection data will be inserted here -->
+          </tbody>
+        </table>
+        
+        <!-- Pagination Controls -->
+        <div class="pagination-controls">
+          <div class="pagination-info">Showing <span id="showing-start">1</span>-<span id="showing-end">20</span> of <span id="total-connections">0</span> total results</div>
+          <div class="pagination-buttons">
+            <button id="prev-page" disabled>&laquo; Previous</button>
+            <div id="page-numbers" class="page-numbers">
+              <span class="page-number active">1</span>
+              <span class="page-number">2</span>
+              <span class="page-number">3</span>
+            </div>
+            <button id="next-page">Next &raquo;</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Connection Details Panel -->
+      <div id="connection-details-panel" class="details-panel">
+        <div class="panel-header">
+          <h3>Connection Details</h3>
+          <button id="close-details" class="close-button">&times;</button>
+        </div>
+        <div class="details-content">
+          <div class="detail-group">
+            <div class="detail-label">Source</div>
+            <div id="detail-source" class="detail-value">192.168.1.100:49123</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">Destination</div>
+            <div id="detail-destination" class="detail-value">93.184.216.34:443 (example.com)</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">Protocol</div>
+            <div id="detail-protocol" class="detail-value">TCP (HTTPS)</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">First Seen</div>
+            <div id="detail-first-seen" class="detail-value">2023-05-15 14:23:45</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">Last Seen</div>
+            <div id="detail-last-seen" class="detail-value">2023-05-15 14:25:12</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">Bytes Sent/Received</div>
+            <div id="detail-bytes" class="detail-value">1.24 MB / 234.5 KB</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">Packets Sent/Received</div>
+            <div id="detail-packets" class="detail-value">145 / 68</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">Country</div>
+            <div id="detail-country" class="detail-value">United States</div>
+          </div>
+          <div class="detail-group">
+            <div class="detail-label">ASN</div>
+            <div id="detail-asn" class="detail-value">AS15169 - Google LLC</div>
+          </div>
+        </div>
+        <div class="details-actions">
+          <button id="favorite-connection" class="action-button">
+            <span class="star-icon">★</span> Add to Favorites
+          </button>
+          <button id="block-connection" class="action-button danger">
+            <span class="block-icon">⊘</span> Block Connection
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Notifications Tab -->
+    <div id="notifications-tab" class="tab-content">
+      <div class="panel">
+        <h3>Network Alerts</h3>
+        <div id="notification-list">
+          <!-- Sample notification -->
+          <div class="notification-item">
+            <div class="notification-icon warning"></div>
+            <div class="notification-content">
+              <h4>Unusual Traffic Detected</h4>
+              <p>High volume of traffic to unknown IP: 203.0.113.42</p>
+              <span class="notification-time">Just now</span>
+            </div>
+          </div>
+          <!-- More notifications will be added dynamically -->
+        </div>
       </div>
     </div>
   </div>
 
   <script src="renderer.js"></script>
+  <script src="network-dashboard.js"></script>
+  <script src="connection-inspector.js"></script>
 </body>
 </html>

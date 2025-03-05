@@ -18,58 +18,68 @@ async function loadInterfaces() {
         const interfaces = await ipcRenderer.invoke('list-interfaces');
         console.log('Interfaces:', interfaces);
         
-        interfaceSelect.innerHTML = `
-            <option value="">Select Interface</option>
-            ${interfaces.map(iface => 
-                `<option value="${iface.name}">${iface.name} (${iface.ip})</option>`
-            ).join('')}
-        `;
+        if (interfaceSelect) {
+            interfaceSelect.innerHTML = `
+                <option value="">Select Interface</option>
+                ${interfaces.map(iface => 
+                    `<option value="${iface.name}">${iface.name} (${iface.ip})</option>`
+                ).join('')}
+            `;
+        }
     } catch (error) {
         console.error('Failed to load interfaces:', error);
         showError(`Failed to load interfaces: ${error.message}`);
-        interfaceSelect.innerHTML = '<option value="">Error loading interfaces</option>';
+        if (interfaceSelect) {
+            interfaceSelect.innerHTML = '<option value="">Error loading interfaces</option>';
+        }
     }
 }
 
 // Start capture
-startButton.addEventListener('click', () => {
-    const interface = interfaceSelect.value;
-    const count = parseInt(packetCount.value);
-    
-    if (!interface) {
-        alert('Please select a network interface');
-        return;
-    }
+if (startButton) {
+    startButton.addEventListener('click', () => {
+        const interface = interfaceSelect ? interfaceSelect.value : '';
+        const count = packetCount ? parseInt(packetCount.value) : 10;
+        
+        if (!interface) {
+            alert('Please select a network interface');
+            return;
+        }
 
-    // Clear previous data
-    packetData.innerHTML = '';
-    packetDetails.textContent = 'Capture in progress...';
-    
-    // Update button states
-    startButton.disabled = true;
-    stopButton.disabled = false;
-    captureRunning = true;
-    
-    // Start capture
-    console.log(`Starting capture on interface: ${interface}, count: ${count}`);
-    ipcRenderer.send('start-capture', {
-        interface: interface,
-        count: count
+        // Clear previous data
+        if (packetData) packetData.innerHTML = '';
+        if (packetDetails) packetDetails.textContent = 'Capture in progress...';
+        
+        // Update button states
+        startButton.disabled = true;
+        if (stopButton) stopButton.disabled = false;
+        captureRunning = true;
+        
+        // Start capture
+        console.log(`Starting capture on interface: ${interface}, count: ${count}`);
+        ipcRenderer.send('start-capture', {
+            interface: interface,
+            count: count
+        });
     });
-});
+}
 
 // Stop capture
-stopButton.addEventListener('click', () => {
-    ipcRenderer.send('stop-capture');
-    captureRunning = false;
-    startButton.disabled = false;
-    stopButton.disabled = true;
-    packetDetails.textContent = 'Capture stopped.';
-});
+if (stopButton) {
+    stopButton.addEventListener('click', () => {
+        ipcRenderer.send('stop-capture');
+        captureRunning = false;
+        if (startButton) startButton.disabled = false;
+        stopButton.disabled = true;
+        if (packetDetails) packetDetails.textContent = 'Capture stopped.';
+    });
+}
 
 // Handle capture data
 ipcRenderer.on('capture-data', (event, data) => {
     console.log('Received packet data:', data);
+    
+    if (!packetData) return;
     
     try {
         // Parse the data if it's JSON
@@ -91,7 +101,7 @@ ipcRenderer.on('capture-data', (event, data) => {
         
         // Add click handler to show details
         row.addEventListener('click', () => {
-            packetDetails.textContent = JSON.stringify(packetInfo, null, 2);
+            if (packetDetails) packetDetails.textContent = JSON.stringify(packetInfo, null, 2);
         });
         
         // Add to table
@@ -123,11 +133,15 @@ function showError(message) {
     errorDiv.innerHTML = `<h4>Error</h4>${message}`;
     
     const container = document.querySelector('.packet-list-container');
-    container.insertBefore(errorDiv, container.firstChild);
+    if (container) {
+        container.insertBefore(errorDiv, container.firstChild);
+    } else {
+        console.error('Error container not found:', message);
+    }
     
     // Enable start button
-    startButton.disabled = false;
-    stopButton.disabled = true;
+    if (startButton) startButton.disabled = false;
+    if (stopButton) stopButton.disabled = true;
 }
 
 // Handle capture errors
@@ -139,8 +153,11 @@ ipcRenderer.on('capture-error', (event, error) => {
 // Add system check and interface loading when the page loads
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        await ipcRenderer.invoke('check-system');
-        await loadInterfaces();
+        // Only run system check and load interfaces if we're on the Inspect tab
+        if (document.getElementById('interface-select')) {
+            await ipcRenderer.invoke('check-system');
+            await loadInterfaces();
+        }
     } catch (error) {
         console.error('System check failed:', error);
         showError(error.message || 'System check failed');
